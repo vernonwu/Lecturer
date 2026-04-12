@@ -22,6 +22,8 @@ Upload your slides. Watch notes appear, page by page, in real time. That's it.
 
 ## 🚀 Getting Started
 
+Try it [here](lecturer.laplacian.net/), or deploy your own in seconds:
+
 **Prerequisites:** Node.js 20+
 
 ```bash
@@ -78,6 +80,10 @@ src/
 ```
 
 ---
+
+## 🤝 Contributing
+
+Contributions are welcome! Fork the repo, make your changes, and open a pull request. Whether it's fixing a bug, improving documentation, or adding a new feature, your help is appreciated.
 
 ## 📜 License
 

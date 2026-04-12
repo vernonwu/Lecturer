@@ -25,7 +25,8 @@ const DEFAULT_OUTPUT_LANGUAGE = "English";
 const MAX_OUTPUT_LANGUAGE_CHARS = 120;
 const MAX_CUSTOM_PROMPT_CHARS = 4_000;
 
-const PEDAGOGY_AND_DEPTH_PROMPT = `CRITICAL INSTRUCTIONS FOR PEDAGOGY & DEPTH (STRICT):
+const PEDAGOGY_AND_DEPTH_PROMPT = `
+CRITICAL INSTRUCTIONS FOR PEDAGOGY & DEPTH (STRICT):
 1. ANTI-PARROTING: Cover ALL the content, but Do NOT just read the slide text out loud. Synthesize and abbreviate the text blocks into a conversational but dense academic explanation.
 2. MANDATORY MATH WALKTHROUGH: You MUST explain at least the core steps of EVERY formula or derivation present on the slide. Define the key variables and explain the intuition behind the math. Do not skip or gloss over the mathematics.
 3. VISUAL GROUNDING: You MUST explicitly analyze and incorporate any charts, graphs, diagrams, or architecture figures on the slide into your lecture. Reference them directly in your prose (e.g., "As illustrated in the graph on the right, the curve indicates...", "Notice the architecture diagram here, where component X connects to Y...").
@@ -34,7 +35,18 @@ const PEDAGOGY_AND_DEPTH_PROMPT = `CRITICAL INSTRUCTIONS FOR PEDAGOGY & DEPTH (S
    - Punctuation Intent: Pay close attention to punctuations such as '?' and '!'. e.g. A question mark ('?') often indicates a core problem statement, a gap in knowledge, or a rhetorical question—you MUST frame your explanation by posing this question to the audience before answering it. An exclamation mark ('!') indicates a critical pitfall, a surprising breakthrough, or a strict rule—you MUST emphasize this with a strong warning or assertion.
    - Arrows/Lines: Treat arrows as explicit indicators of causality, state transitions, or logical flow (e.g., A -> B). Explain this relationship explicitly.
    - Typography & Color: Pay close attention to bold, italic, differently sized, or colored text. These indicate emphasis or distinct categories. If a concept is visually emphasized on the slide, you MUST emphasize its importance in your lecture explanation.
-   - Grouping: If items are grouped visually (e.g., in boxes or columns), explain the relationship or contrast between these groups.`;
+   - Grouping: If items are grouped visually (e.g., in boxes or columns), explain the relationship or contrast between these groups.
+`;
+
+const TRUTH_AND_GROUNDING_PROMPT = `
+CRITICAL INSTRUCTIONS FOR TRUTH & GROUNDING (STRICT):
+1. EVIDENCE BOUNDARY: You may use ONLY these inputs as facts: (a) the current slide image, (b) PDF title, (c) provided memory/history context, and (d) previous page markdown. Do NOT invent any additional context.
+2. NO FABRICATION: Do NOT fabricate definitions, equations, variable meanings, dataset names, experiment settings, citations, theorem names, historical facts, or page-to-page transitions that are not explicitly present in the allowed inputs.
+3. AMBIGUITY HANDLING: If text, symbols, or figures are blurry/occluded/ambiguous, state that they are unclear and continue with only what is confidently visible. Do NOT guess missing tokens or numbers.
+4. CONTINUITY DISCIPLINE: Use prior context only for consistency of already introduced symbols/terms. If a needed definition is not present in current inputs, do not claim it as known.
+5. SOURCE PRIORITY: When there is any conflict, trust the current slide image over prior memory text. Never override visible slide content with speculative interpretation.
+6. MEMORY SAFETY: In <memory_update>, include only high-confidence technical facts that are explicitly supported by the current slide. Do NOT add speculative forecasts about future slides.
+`;
 
 function buildSystemPrompt(body: GenerateRequestBody) {
   const outputLanguage = body.outputLanguage.trim() || DEFAULT_OUTPUT_LANGUAGE;
@@ -49,6 +61,8 @@ CRITICAL INSTRUCTIONS FOR NARRATIVE FLOW:
 4. Explain the current slide as if it is a seamless continuation of the previous paragraph.
 
 ${PEDAGOGY_AND_DEPTH_PROMPT}
+
+${TRUTH_AND_GROUNDING_PROMPT}
 
 === USER PREFERENCES (HIGHEST PRIORITY FOR STYLE & CONTENT) ===
 OUTPUT LANGUAGE: You MUST output all explanations, lectures, and summaries entirely in ${outputLanguage}. (Math formulas remain in standard LaTeX).
