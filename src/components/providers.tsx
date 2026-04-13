@@ -1,6 +1,7 @@
 "use client";
 
 import { ThemeProvider } from "next-themes";
+import { DiagnosticsProvider } from "@/context/diagnostics-context";
 import { PdfProvider } from "@/context/pdf-context";
 import { SettingsProvider } from "@/context/settings-context";
 
@@ -13,7 +14,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <SettingsProvider>
-        <PdfProvider>{children}</PdfProvider>
+        <DiagnosticsProvider>
+          <PdfProvider>{children}</PdfProvider>
+        </DiagnosticsProvider>
       </SettingsProvider>
     </ThemeProvider>
   );

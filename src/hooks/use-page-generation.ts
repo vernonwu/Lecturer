@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  estimateTokenCountFromText,
+  useDiagnosticsActions,
+} from "@/context/diagnostics-context";
 import { usePdf } from "@/context/pdf-context";
 import { useLectureStream } from "@/hooks/use-lecture-stream";
 import { useSettings } from "@/context/settings-context";
@@ -80,6 +84,7 @@ interface GenerationContextEntry {
 
 export function usePageGeneration() {
   const { streamLecture } = useLectureStream();
+  const { beginSlide, recordChunk, finishSlide } = useDiagnosticsActions();
   const { settings } = useSettings();
   const { documentData, pageGenerations, updatePageGeneration } = usePdf();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -161,6 +166,18 @@ export function usePageGeneration() {
         settings.contextMode === "full"
           ? buildFullHistoryMarkdown(pageNumber, generationsSnapshot)
           : "";
+      const contextPayload = [
+        documentData.title,
+        settings.contextMode === "fast" ? historyContext : "",
+        settings.contextMode === "fast" ? previousPageMarkdown : "",
+        settings.contextMode === "full" ? fullHistoryMarkdown : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      beginSlide({
+        pageNumber,
+        contextTokens: estimateTokenCountFromText(contextPayload),
+      });
 
       generationContextRef.current[pageNumber] = {
         lectureMarkdown: "",
@@ -195,6 +212,7 @@ export function usePageGeneration() {
           },
           signal,
           onLectureChunk: (chunk) => {
+            recordChunk({ pageNumber, chunk });
             generationContextRef.current[pageNumber] = {
               ...generationContextRef.current[pageNumber],
               lectureMarkdown:
@@ -206,6 +224,7 @@ export function usePageGeneration() {
             }));
           },
           onMemoryChunk: (chunk) => {
+            recordChunk({ pageNumber, chunk });
             generationContextRef.current[pageNumber] = {
               ...generationContextRef.current[pageNumber],
               memoryUpdate:
@@ -229,6 +248,7 @@ export function usePageGeneration() {
           isGenerating: false,
           error: null,
         }));
+        finishSlide({ pageNumber, success: true });
       } catch (error) {
         if (signal.aborted || isAbortError(error)) {
           generationContextRef.current[pageNumber] = {
@@ -242,6 +262,7 @@ export function usePageGeneration() {
             isGenerating: false,
             error: null,
           }));
+          finishSlide({ pageNumber, success: false });
           throw createAbortError();
         }
 
@@ -258,11 +279,15 @@ export function usePageGeneration() {
           isGenerating: false,
           error: message,
         }));
+        finishSlide({ pageNumber, success: false });
         throw error;
       }
     },
     [
+      beginSlide,
       documentData,
+      finishSlide,
+      recordChunk,
       settings.providerType,
       settings.apiKey,
       settings.baseUrl,

@@ -15,6 +15,7 @@ Upload your slides. Watch notes appear, page by page, in real time. That's it.
 - 🧠 **Context-aware** — The AI remembers what it covered earlier so notes stay coherent across the whole deck
 - 🔑 **Bring your own key** — Works with OpenAI, Anthropic, Gemini, or any local/custom model
 - 📐 **Math & LaTeX support** — Formulas render beautifully out of the box
+- 📊 **Live Activity Dashboard** — Floating diagnostics modal with real-time throughput and context-capacity charts
 - 🌙 **Dark mode** — Easy on the eyes, day or night
 - 📥 **Export anytime** — Copy all notes or download as a `.md` file
 
@@ -41,7 +42,7 @@ Open [http://localhost:3000](http://localhost:3000) and you're in.
 2. Upload a `.pdf`
 3. Hit **Generate** on a single page — or **Generate Full Document** to do them all
 4. Read your notes on the right while the slides track along on the left
-5. **Copy** or **Download** your notes when you're done
+5. **Copy** or **Download** your notes when you're done.
 
 ---
 

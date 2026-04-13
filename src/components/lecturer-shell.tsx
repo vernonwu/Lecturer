@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useTheme } from "next-themes";
+import { DiagnosticsModal } from "@/components/diagnostics-modal";
 import { DualPaneReader } from "@/components/dual-pane-reader";
 import { PdfUploadZone } from "@/components/pdf-upload-zone";
 import { SettingsModal } from "@/components/settings-modal";
@@ -10,6 +11,7 @@ import { useSettings } from "@/context/settings-context";
 import { CONTEXT_MODE_LABELS } from "@/types/settings";
 
 export function LecturerShell() {
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const {
     documentData,
@@ -55,6 +57,23 @@ export function LecturerShell() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Open activity diagnostics"
+              onClick={() => setIsDiagnosticsOpen(true)}
+              className="rounded-lg border border-white/70 bg-white/60 p-2 text-zinc-800 hover:bg-white dark:border-slate-600/70 dark:bg-slate-800/75 dark:text-slate-100 dark:hover:bg-slate-700/80"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                <path
+                  d="M3 12h3l2-5 4 10 2-5h7"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
             <button
               type="button"
               aria-label="Toggle theme"
@@ -198,6 +217,10 @@ export function LecturerShell() {
           <DualPaneReader />
         </main>
       </div>
+
+      {isDiagnosticsOpen ? (
+        <DiagnosticsModal onClose={() => setIsDiagnosticsOpen(false)} />
+      ) : null}
 
       {isSettingsOpen ? (
         <SettingsModal onClose={() => setIsSettingsOpen(false)} />
