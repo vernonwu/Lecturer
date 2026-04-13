@@ -3,13 +3,16 @@ import { NextRequest } from "next/server";
 export const runtime = "edge";
 
 type ProviderType = "openai" | "anthropic" | "gemini" | "custom";
+type GenerationContextMode = "fast" | "full";
 
 interface GenerateRequestBody {
   pageNumber: number;
   imageDataUrl: string;
   pdfTitle: string;
+  contextMode: GenerationContextMode;
   historyContext: string;
   previousPageMarkdown: string;
+  fullHistoryMarkdown: string;
   outputLanguage: string;
   customPrompt: string;
 }
@@ -22,8 +25,10 @@ interface ProviderConfig {
 }
 
 const DEFAULT_OUTPUT_LANGUAGE = "English";
+const DEFAULT_CONTEXT_MODE: GenerationContextMode = "fast";
 const MAX_OUTPUT_LANGUAGE_CHARS = 120;
 const MAX_CUSTOM_PROMPT_CHARS = 4_000;
+const MAX_FULL_HISTORY_CHARS = 400_000;
 
 const PEDAGOGY_AND_DEPTH_PROMPT = `
 CRITICAL INSTRUCTIONS FOR PEDAGOGY & DEPTH (STRICT):
@@ -40,7 +45,7 @@ CRITICAL INSTRUCTIONS FOR PEDAGOGY & DEPTH (STRICT):
 
 const TRUTH_AND_GROUNDING_PROMPT = `
 CRITICAL INSTRUCTIONS FOR TRUTH & GROUNDING (STRICT):
-1. EVIDENCE BOUNDARY: You may use ONLY these inputs as facts: (a) the current slide image, (b) PDF title, (c) provided memory/history context, and (d) previous page markdown. Do NOT invent any additional context.
+1. EVIDENCE BOUNDARY: You may use ONLY these inputs as facts: (a) the current slide image, (b) PDF title, (c) provided memory/history context (rolling summary or full previous notes), and (d) previous page markdown when provided. Do NOT invent any additional context.
 2. NO FABRICATION: Do NOT fabricate definitions, equations, variable meanings, dataset names, experiment settings, citations, theorem names, historical facts, or page-to-page transitions that are not explicitly present in the allowed inputs.
 3. AMBIGUITY HANDLING: If text, symbols, or figures are blurry/occluded/ambiguous, state that they are unclear and continue with only what is confidently visible. Do NOT guess missing tokens or numbers.
 4. CONTINUITY DISCIPLINE: Use prior context only for consistency of already introduced symbols/terms. If a needed definition is not present in current inputs, do not claim it as known.
@@ -112,12 +117,28 @@ function parseDataUrlImage(dataUrl: string) {
 }
 
 function buildUserPrompt(body: GenerateRequestBody) {
+  if (body.contextMode === "full") {
+    const fullHistoryMarkdown = body.fullHistoryMarkdown.trim() || "(none)";
+
+    return [
+      `PDF Title/Summary: ${body.pdfTitle || "Untitled PDF"}`,
+      "",
+      "Context mode: FULL (precision-first).",
+      "Accumulated markdown history from all previous pages (1 to N-1):",
+      fullHistoryMarkdown,
+      "",
+      `Current page number (N): ${body.pageNumber}`,
+      "Use the attached page image as the primary source of truth.",
+    ].join("\n");
+  }
+
   const historyContext = body.historyContext.trim() || "(none)";
   const previousPageMarkdown = body.previousPageMarkdown.trim() || "(none)";
 
   return [
     `PDF Title/Summary: ${body.pdfTitle || "Untitled PDF"}`,
     "",
+    "Context mode: FAST (token-efficient rolling memory).",
     "Accumulated context from earlier pages (1 to N-2):",
     historyContext,
     "",
@@ -145,6 +166,20 @@ function sanitizeCustomPrompt(value: unknown) {
     return "";
   }
   return value.trim().slice(0, MAX_CUSTOM_PROMPT_CHARS);
+}
+
+function sanitizeContextMode(value: unknown): GenerationContextMode {
+  if (value === "full") {
+    return "full";
+  }
+  return DEFAULT_CONTEXT_MODE;
+}
+
+function sanitizeFullHistoryMarkdown(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.slice(0, MAX_FULL_HISTORY_CHARS);
 }
 
 function extractOpenAiDelta(payload: unknown) {
@@ -453,12 +488,14 @@ function assertGenerateBody(body: unknown): GenerateRequestBody {
     pageNumber: payload.pageNumber,
     imageDataUrl: payload.imageDataUrl,
     pdfTitle: typeof payload.pdfTitle === "string" ? payload.pdfTitle : "",
+    contextMode: sanitizeContextMode(payload.contextMode),
     historyContext:
       typeof payload.historyContext === "string" ? payload.historyContext : "",
     previousPageMarkdown:
       typeof payload.previousPageMarkdown === "string"
         ? payload.previousPageMarkdown
         : "",
+    fullHistoryMarkdown: sanitizeFullHistoryMarkdown(payload.fullHistoryMarkdown),
     outputLanguage: sanitizeOutputLanguage(payload.outputLanguage),
     customPrompt: sanitizeCustomPrompt(payload.customPrompt),
   };

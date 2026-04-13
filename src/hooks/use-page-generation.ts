@@ -23,6 +23,30 @@ function buildHistoryContext(
   return memoryLines.join("\n");
 }
 
+function buildFullHistoryMarkdown(
+  pageNumber: number,
+  generations: Record<number, { lectureMarkdown: string }>,
+) {
+  const historySections = Object.entries(generations)
+    .map(([page, generation]) => ({
+      page: Number(page),
+      lectureMarkdown: generation.lectureMarkdown,
+    }))
+    .filter(
+      (entry) =>
+        Number.isFinite(entry.page) &&
+        entry.page <= pageNumber - 1 &&
+        entry.lectureMarkdown.trim(),
+    )
+    .sort((a, b) => a.page - b.page)
+    .map(
+      (entry) =>
+        `### Page ${entry.page}\n${entry.lectureMarkdown.trim()}`,
+    );
+
+  return historySections.join("\n\n");
+}
+
 function isAbortError(error: unknown) {
   if (error instanceof DOMException && error.name === "AbortError") {
     return true;
@@ -129,7 +153,14 @@ export function usePageGeneration() {
       const generationsSnapshot = generationContextRef.current;
       const previousPageMarkdown =
         generationsSnapshot[pageNumber - 1]?.lectureMarkdown || "";
-      const historyContext = buildHistoryContext(pageNumber, generationsSnapshot);
+      const historyContext =
+        settings.contextMode === "fast"
+          ? buildHistoryContext(pageNumber, generationsSnapshot)
+          : "";
+      const fullHistoryMarkdown =
+        settings.contextMode === "full"
+          ? buildFullHistoryMarkdown(pageNumber, generationsSnapshot)
+          : "";
 
       generationContextRef.current[pageNumber] = {
         lectureMarkdown: "",
@@ -149,8 +180,10 @@ export function usePageGeneration() {
             pageNumber,
             imageDataUrl: page.imageDataUrl,
             pdfTitle: documentData.title,
+            contextMode: settings.contextMode,
             historyContext,
             previousPageMarkdown,
+            fullHistoryMarkdown,
             outputLanguage: settings.outputLanguage,
             customPrompt: settings.customPrompt,
           },
@@ -234,6 +267,7 @@ export function usePageGeneration() {
       settings.apiKey,
       settings.baseUrl,
       settings.modelName,
+      settings.contextMode,
       settings.outputLanguage,
       settings.customPrompt,
       streamLecture,

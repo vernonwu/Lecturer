@@ -7,6 +7,7 @@ import { PdfUploadZone } from "@/components/pdf-upload-zone";
 import { SettingsModal } from "@/components/settings-modal";
 import { usePdf } from "@/context/pdf-context";
 import { useSettings } from "@/context/settings-context";
+import { CONTEXT_MODE_LABELS } from "@/types/settings";
 
 function maskKey(apiKey: string) {
   if (!apiKey) {
@@ -163,6 +164,9 @@ export function LecturerShell() {
 
                 <dt className="font-medium text-zinc-600 dark:text-slate-400">Model</dt>
                 <dd className="break-all">{settings.modelName || "Not set"}</dd>
+
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">Context</dt>
+                <dd className="break-all">{CONTEXT_MODE_LABELS[settings.contextMode]}</dd>
 
                 <dt className="font-medium text-zinc-600 dark:text-slate-400">Language</dt>
                 <dd className="break-all">

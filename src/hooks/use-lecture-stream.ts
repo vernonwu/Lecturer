@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback } from "react";
-import type { ProviderType } from "@/types/settings";
+import type { GenerationContextMode, ProviderType } from "@/types/settings";
 
 interface GenerateRequestPayload {
   pageNumber: number;
   imageDataUrl: string;
   pdfTitle: string;
+  contextMode: GenerationContextMode;
   historyContext: string;
   previousPageMarkdown: string;
+  fullHistoryMarkdown: string;
   outputLanguage: string;
   customPrompt: string;
 }

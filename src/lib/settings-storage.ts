@@ -2,6 +2,7 @@ import {
   DEFAULT_SETTINGS,
   SETTINGS_STORAGE_KEY,
   normalizeCompressionSettings,
+  type GenerationContextMode,
   type LecturerSettings,
   type ProviderType,
 } from "@/types/settings";
@@ -16,6 +17,10 @@ function isProviderType(value: unknown): value is ProviderType {
     value === "gemini" ||
     value === "custom"
   );
+}
+
+function isGenerationContextMode(value: unknown): value is GenerationContextMode {
+  return value === "fast" || value === "full";
 }
 
 function parseSettings(storedValue: string | null): LecturerSettings {
@@ -39,6 +44,9 @@ function parseSettings(storedValue: string | null): LecturerSettings {
         typeof parsed.modelName === "string"
           ? parsed.modelName
           : DEFAULT_SETTINGS.modelName,
+      contextMode: isGenerationContextMode(parsed.contextMode)
+        ? parsed.contextMode
+        : DEFAULT_SETTINGS.contextMode,
       outputLanguage:
         typeof parsed.outputLanguage === "string" && parsed.outputLanguage.trim()
           ? parsed.outputLanguage

@@ -4,11 +4,14 @@ import { useMemo, useState } from "react";
 import { useSettings } from "@/context/settings-context";
 import {
   COMPRESSION_LIMITS,
+  CONTEXT_MODE_LABELS,
+  CONTEXT_MODE_TOOLTIPS,
   DEFAULT_BASE_URL_BY_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SETTINGS,
   OUTPUT_LANGUAGE_SUGGESTIONS,
   normalizeCompressionSettings,
+  type GenerationContextMode,
   type LecturerSettings,
   type ProviderType,
 } from "@/types/settings";
@@ -23,6 +26,8 @@ const providerLabels: Record<ProviderType, string> = {
   gemini: "Google Gemini",
   custom: "Custom / Local (Ollama, vLLM)",
 };
+
+const contextModeOptions: GenerationContextMode[] = ["fast", "full"];
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettings();
@@ -157,6 +162,46 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               className="h-11 rounded-lg border border-border/80 bg-white/90 px-3 text-sm outline-none focus:border-accent dark:border-slate-700/70 dark:bg-slate-800/85 dark:text-slate-100"
             />
           </label>
+
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-medium">Context Precision Mode</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {contextModeOptions.map((mode) => {
+                const selected = draft.contextMode === mode;
+                return (
+                  <label
+                    key={mode}
+                    title={CONTEXT_MODE_TOOLTIPS[mode]}
+                    className={[
+                      "grid gap-1 rounded-lg border px-3 py-2 text-sm transition-colors",
+                      selected
+                        ? "border-accent bg-accent/10"
+                        : "border-border/80 bg-white/90 dark:border-slate-700/70 dark:bg-slate-800/70",
+                    ].join(" ")}
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="context-mode"
+                        value={mode}
+                        checked={selected}
+                        onChange={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            contextMode: mode,
+                          }))
+                        }
+                      />
+                      <span className="font-medium">{CONTEXT_MODE_LABELS[mode]}</span>
+                    </span>
+                    <span className="text-xs text-zinc-600 dark:text-slate-400">
+                      {CONTEXT_MODE_TOOLTIPS[mode]}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
 
           <label className="grid gap-1.5">
             <span className="text-sm font-medium">Output Language</span>

@@ -5,6 +5,7 @@ import {
 } from "@/types/pdf";
 
 export type ProviderType = "openai" | "anthropic" | "gemini" | "custom";
+export type GenerationContextMode = "fast" | "full";
 
 export const COMPRESSION_LIMITS = {
   renderScaleMin: 1,
@@ -48,6 +49,7 @@ export interface LecturerSettings {
   apiKey: string;
   baseUrl: string;
   modelName: string;
+  contextMode: GenerationContextMode;
   outputLanguage: string;
   customPrompt: string;
   compression: PdfCompressionSettings;
@@ -86,11 +88,22 @@ export const OUTPUT_LANGUAGE_SUGGESTIONS = [
   "हिन्दी",
 ] as const;
 
+export const CONTEXT_MODE_LABELS: Record<GenerationContextMode, string> = {
+  fast: "Fast (Default)",
+  full: "Full",
+};
+
+export const CONTEXT_MODE_TOOLTIPS: Record<GenerationContextMode, string> = {
+  fast: "Optimized for speed and token savings. Uses a rolling summary.",
+  full: "Highest precision for complex derivations. Passes all previous notes as context.",
+};
+
 export const DEFAULT_SETTINGS: LecturerSettings = {
   providerType: "openai",
   apiKey: "",
   baseUrl: DEFAULT_BASE_URL_BY_PROVIDER.openai,
   modelName: DEFAULT_MODEL_BY_PROVIDER.openai,
+  contextMode: "fast",
   outputLanguage: "English",
   customPrompt: "",
   compression: normalizeCompressionSettings(undefined),
