@@ -40,7 +40,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       ),
     [draft.outputLanguage, presetLanguages],
   );
-  const selectedLanguageValue = isPresetLanguage ? draft.outputLanguage : "__custom__";
+  const selectedLanguageValue = isPresetLanguage
+    ? draft.outputLanguage
+    : "__custom__";
 
   const onProviderChange = (nextProvider: ProviderType) => {
     setDraft((current) => {
@@ -67,7 +69,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const save = () => {
     updateSettings({
       ...draft,
-      outputLanguage: draft.outputLanguage.trim() || DEFAULT_SETTINGS.outputLanguage,
+      outputLanguage:
+        draft.outputLanguage.trim() || DEFAULT_SETTINGS.outputLanguage,
       customPrompt: draft.customPrompt.trim(),
       compression: normalizeCompressionSettings(draft.compression),
     });
@@ -89,7 +92,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       <section className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/50 bg-white/40 p-6 text-zinc-900 shadow-2xl backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/82 dark:text-slate-100">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold">Model Provider Settings</h2>
+            <h2 className="text-xl font-semibold">General Settings</h2>
             <p className="mt-1 text-sm text-zinc-700 dark:text-slate-400">
               Keys are stored only in this browser via localStorage.
             </p>
@@ -105,7 +108,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
         <div className="grid gap-4">
           <label className="grid gap-1.5">
-            <span className="text-sm font-medium">Provider Type</span>
+            <span className="text-sm font-medium">Model Provider</span>
             <select
               value={draft.providerType}
               onChange={(event) =>
@@ -127,7 +130,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               type="password"
               value={draft.apiKey}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, apiKey: event.target.value }))
+                setDraft((current) => ({
+                  ...current,
+                  apiKey: event.target.value,
+                }))
               }
               placeholder="sk-..."
               className="h-11 rounded-lg border border-border/80 bg-white/90 px-3 text-sm outline-none focus:border-accent dark:border-slate-700/70 dark:bg-slate-800/85 dark:text-slate-100"
@@ -140,7 +146,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               type="url"
               value={draft.baseUrl}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, baseUrl: event.target.value }))
+                setDraft((current) => ({
+                  ...current,
+                  baseUrl: event.target.value,
+                }))
               }
               placeholder="https://api.openai.com/v1"
               className="h-11 rounded-lg border border-border/80 bg-white/90 px-3 text-sm outline-none focus:border-accent dark:border-slate-700/70 dark:bg-slate-800/85 dark:text-slate-100"
@@ -164,7 +173,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           </label>
 
           <fieldset className="grid gap-2">
-            <legend className="text-sm font-medium">Context Precision Mode</legend>
+            <legend className="text-sm font-medium">
+              Context Precision Mode
+            </legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {contextModeOptions.map((mode) => {
                 const selected = draft.contextMode === mode;
@@ -192,7 +203,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                           }))
                         }
                       />
-                      <span className="font-medium">{CONTEXT_MODE_LABELS[mode]}</span>
+                      <span className="font-medium">
+                        {CONTEXT_MODE_LABELS[mode]}
+                      </span>
                     </span>
                     <span className="text-xs text-zinc-600 dark:text-slate-400">
                       {CONTEXT_MODE_TOOLTIPS[mode]}
@@ -212,7 +225,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 if (nextValue === "__custom__") {
                   setDraft((current) => ({
                     ...current,
-                    outputLanguage: isPresetLanguage ? "" : current.outputLanguage,
+                    outputLanguage: isPresetLanguage
+                      ? ""
+                      : current.outputLanguage,
                   }));
                   return;
                 }
@@ -247,7 +262,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           </label>
 
           <label className="grid gap-1.5">
-            <span className="text-sm font-medium">Custom Prompt / Instructions</span>
+            <span className="text-sm font-medium">
+              Custom Prompt / Instructions
+            </span>
             <textarea
               value={draft.customPrompt}
               onChange={(event) =>

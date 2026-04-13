@@ -9,16 +9,6 @@ import { usePdf } from "@/context/pdf-context";
 import { useSettings } from "@/context/settings-context";
 import { CONTEXT_MODE_LABELS } from "@/types/settings";
 
-function maskKey(apiKey: string) {
-  if (!apiKey) {
-    return "Not set";
-  }
-  if (apiKey.length <= 6) {
-    return `${"*".repeat(apiKey.length)}`;
-  }
-  return `${apiKey.slice(0, 3)}${"*".repeat(apiKey.length - 6)}${apiKey.slice(-3)}`;
-}
-
 export function LecturerShell() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const {
@@ -32,20 +22,9 @@ export function LecturerShell() {
   const { settings } = useSettings();
   const { resolvedTheme, setTheme } = useTheme();
 
-  const keyPreview = useMemo(() => maskKey(settings.apiKey), [settings.apiKey]);
-  const customPromptSummary = useMemo(() => {
-    const trimmed = settings.customPrompt.trim();
-    if (!trimmed) {
-      return "Not set";
-    }
-    if (trimmed.length <= 120) {
-      return trimmed;
-    }
-    return `${trimmed.slice(0, 117)}...`;
-  }, [settings.customPrompt]);
   const compressionSummary = useMemo(
     () =>
-      `Render scale max(${settings.compression.renderScale.toFixed(2)}, devicePixelRatio), JPEG quality ${settings.compression.jpegQuality.toFixed(2)}`,
+      `Render scale ${settings.compression.renderScale.toFixed(2)}, JPEG quality ${settings.compression.jpegQuality.toFixed(2)}`,
     [settings.compression.jpegQuality, settings.compression.renderScale],
   );
   const isDarkTheme = resolvedTheme === "dark";
@@ -84,7 +63,11 @@ export function LecturerShell() {
               }}
               className="rounded-lg border border-white/70 bg-white/60 p-2 text-zinc-800 hover:bg-white dark:border-slate-600/70 dark:bg-slate-800/75 dark:text-slate-100 dark:hover:bg-slate-700/80"
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4 dark:hidden" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 dark:hidden"
+                aria-hidden="true"
+              >
                 <path
                   d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
                   fill="none"
@@ -94,7 +77,11 @@ export function LecturerShell() {
                   strokeLinejoin="round"
                 />
               </svg>
-              <svg viewBox="0 0 24 24" className="hidden h-4 w-4 dark:block" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                className="hidden h-4 w-4 dark:block"
+                aria-hidden="true"
+              >
                 <path
                   d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.36 6.36-1.41-1.41M7.05 7.05 5.64 5.64m12.72 0-1.41 1.41M7.05 16.95l-1.41 1.41M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"
                   fill="none"
@@ -128,18 +115,28 @@ export function LecturerShell() {
             <PdfUploadZone />
 
             <section className="rounded-2xl border border-white/50 bg-white/35 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/55 dark:bg-slate-900/52">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-slate-100">Render Status</h2>
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+                Render Status
+              </h2>
               <dl className="mt-3 grid grid-cols-[130px_1fr] gap-y-2 text-sm">
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">File</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  File
+                </dt>
                 <dd className="break-all">{sourceFile?.name ?? "None"}</dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Title</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Title
+                </dt>
                 <dd className="break-all">{documentData?.title ?? "N/A"}</dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Pages</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Pages
+                </dt>
                 <dd>{documentData?.totalPages ?? 0}</dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Progress</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Progress
+                </dt>
                 <dd>
                   {progress
                     ? `${progress.currentPage}/${progress.totalPages}`
@@ -148,36 +145,46 @@ export function LecturerShell() {
                       : "Idle"}
                 </dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Compression</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Compression
+                </dt>
                 <dd>{compressionSummary}</dd>
               </dl>
             </section>
 
             <section className="rounded-2xl border border-white/50 bg-white/35 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/55 dark:bg-slate-900/52">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-slate-100">Provider Snapshot</h2>
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+                Settings Snapshot
+              </h2>
               <dl className="mt-3 grid grid-cols-[100px_1fr] gap-y-2 text-sm">
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Provider</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Provider
+                </dt>
                 <dd className="uppercase">{settings.providerType}</dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Base URL</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Base URL
+                </dt>
                 <dd className="break-all">{settings.baseUrl || "Not set"}</dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Model</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Model
+                </dt>
                 <dd className="break-all">{settings.modelName || "Not set"}</dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Context</dt>
-                <dd className="break-all">{CONTEXT_MODE_LABELS[settings.contextMode]}</dd>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Context
+                </dt>
+                <dd className="break-all">
+                  {CONTEXT_MODE_LABELS[settings.contextMode]}
+                </dd>
 
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Language</dt>
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Language
+                </dt>
                 <dd className="break-all">
                   {settings.outputLanguage || "English"}
                 </dd>
-
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">Instructions</dt>
-                <dd className="break-words">{customPromptSummary}</dd>
-
-                <dt className="font-medium text-zinc-600 dark:text-slate-400">API Key</dt>
-                <dd className="font-mono text-xs">{keyPreview}</dd>
               </dl>
             </section>
 
