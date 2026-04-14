@@ -615,7 +615,7 @@ export function DualPaneReader() {
     }
     jumpToPage(activePage, {
       behavior: "smooth",
-      syncPdf: false,
+      syncPdf: true,
       syncMarkdown: true,
     });
   }, [activePage, isGenerating, jumpToPage, queueProgress?.phase]);
