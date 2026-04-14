@@ -199,6 +199,11 @@ export function LecturerShell() {
                 </dd>
 
                 <dt className="font-medium text-zinc-600 dark:text-slate-400">
+                  Concurrency
+                </dt>
+                <dd>{settings.maxConcurrentRequests}</dd>
+
+                <dt className="font-medium text-zinc-600 dark:text-slate-400">
                   Language
                 </dt>
                 <dd className="break-all">

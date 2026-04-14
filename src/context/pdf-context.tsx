@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useSettings } from "@/context/settings-context";
 import { renderPdfFileToJpegPages } from "@/lib/pdf-processing";
+import type { SlideTakeaway } from "@/lib/lecture-prompts";
 import type { PdfDocumentData } from "@/types/pdf";
 
 interface RenderProgress {
@@ -14,7 +15,9 @@ export interface PageGenerationState {
   lectureMarkdown: string;
   memoryUpdate: string;
   isGenerating: boolean;
+  status: "pending_streaming" | "completed";
   error: string | null;
+  takeaway: SlideTakeaway | null;
 }
 
 interface PdfContextValue {
@@ -40,7 +43,9 @@ const EMPTY_PAGE_GENERATION: PageGenerationState = {
   lectureMarkdown: "",
   memoryUpdate: "",
   isGenerating: false,
+  status: "completed",
   error: null,
+  takeaway: null,
 };
 
 function isPdfFile(file: File) {

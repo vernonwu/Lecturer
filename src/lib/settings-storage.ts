@@ -1,6 +1,7 @@
 import {
   DEFAULT_SETTINGS,
   SETTINGS_STORAGE_KEY,
+  normalizeMaxConcurrentRequests,
   normalizeCompressionSettings,
   type GenerationContextMode,
   type LecturerSettings,
@@ -47,6 +48,9 @@ function parseSettings(storedValue: string | null): LecturerSettings {
       contextMode: isGenerationContextMode(parsed.contextMode)
         ? parsed.contextMode
         : DEFAULT_SETTINGS.contextMode,
+      maxConcurrentRequests: normalizeMaxConcurrentRequests(
+        parsed.maxConcurrentRequests,
+      ),
       outputLanguage:
         typeof parsed.outputLanguage === "string" && parsed.outputLanguage.trim()
           ? parsed.outputLanguage
@@ -88,11 +92,19 @@ export function saveSettingsToStorage(settings: LecturerSettings): void {
     return;
   }
 
-  const serializedSettings = JSON.stringify(settings);
+  const normalizedSettings: LecturerSettings = {
+    ...settings,
+    maxConcurrentRequests: normalizeMaxConcurrentRequests(
+      settings.maxConcurrentRequests,
+    ),
+    compression: normalizeCompressionSettings(settings.compression),
+  };
+
+  const serializedSettings = JSON.stringify(normalizedSettings);
   window.localStorage.setItem(SETTINGS_STORAGE_KEY, serializedSettings);
   cachedRawSettings = serializedSettings;
   cachedParsedSettings = {
-    ...settings,
-    compression: { ...settings.compression },
+    ...normalizedSettings,
+    compression: { ...normalizedSettings.compression },
   };
 }

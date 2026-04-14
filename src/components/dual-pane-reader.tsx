@@ -1,17 +1,27 @@
 "use client";
 
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import { usePdf } from "@/context/pdf-context";
 import { usePageGeneration } from "@/hooks/use-page-generation";
 import { PdfPageCanvas } from "@/components/pdf-page-canvas";
+import { GlobalMappingLoader } from "@/components/global-mapping-loader";
 
 const OBSERVER_MARGIN = "-20% 0px -70% 0px";
 const OBSERVER_THRESHOLDS = [0, 0.25, 0.5, 0.75, 1];
 const PROGRAMMATIC_LOCK_MS = 800;
 const MARKDOWN_OBSERVER_DEBOUNCE_MS = 100;
+const STREAM_DRAIN_INTERVAL_MS = 18;
+const TAIL_SYNC_THRESHOLD_PX = 100;
 
 function pickClosestIntersection(
   entries: IntersectionObserverEntry[],
@@ -52,8 +62,43 @@ function hasTextSelection() {
   return Boolean(selection && selection.toString().trim());
 }
 
+function scrollElementWithinContainer(options: {
+  container: HTMLElement | null;
+  target: HTMLElement | null;
+  behavior: ScrollBehavior;
+  block: "start" | "end";
+}) {
+  const { container, target, behavior, block } = options;
+  if (!container || !target || container.clientHeight <= 0) {
+    return;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetTopInContainer =
+    container.scrollTop + (targetRect.top - containerRect.top);
+  const targetBottomInContainer = targetTopInContainer + targetRect.height;
+
+  const rawTop =
+    block === "start"
+      ? targetTopInContainer
+      : targetBottomInContainer - container.clientHeight;
+  const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+  const clampedTop = Math.min(maxTop, Math.max(0, rawTop));
+
+  if (Math.abs(container.scrollTop - clampedTop) < 1) {
+    return;
+  }
+
+  container.scrollTo({
+    top: clampedTop,
+    behavior,
+  });
+}
+
 export function DualPaneReader() {
-  const { documentData, currentPage, setCurrentPage, pageGenerations } = usePdf();
+  const { documentData, currentPage, setCurrentPage, pageGenerations } =
+    usePdf();
   const {
     generatePage,
     generateFullDocument,
@@ -72,9 +117,27 @@ export function DualPaneReader() {
   const markdownDebounceTimerRef = useRef<number | null>(null);
   const pendingMarkdownPageRef = useRef<number | null>(null);
   const copyStatusTimerRef = useRef<number | null>(null);
-  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
+  const drainIntervalRef = useRef<number | null>(null);
+  const streamBufferRef = useRef("");
+  const previousRawStreamingRef = useRef("");
+  const streamingPageRef = useRef<number | null>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
+  const aiCursorRef = useRef<HTMLSpanElement | null>(null);
+  const isUserScrolledUp = useRef(false);
+  const [displayedStreamingText, setDisplayedStreamingText] = useState("");
+  const [showResumeButton, setShowResumeButton] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">(
+    "idle",
+  );
 
   const pageCount = documentData?.totalPages ?? 0;
+  const pageIndexByNumber = useMemo(() => {
+    const indexByNumber = new Map<number, number>();
+    documentData?.pages.forEach((page, index) => {
+      indexByNumber.set(page.pageNumber, index);
+    });
+    return indexByNumber;
+  }, [documentData?.pages]);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -112,13 +175,24 @@ export function DualPaneReader() {
         window.clearTimeout(copyStatusTimerRef.current);
         copyStatusTimerRef.current = null;
       }
+      if (drainIntervalRef.current !== null) {
+        window.clearInterval(drainIntervalRef.current);
+        drainIntervalRef.current = null;
+      }
     };
   }, []);
 
   const withProgrammaticLock = useCallback(
-    (options: { scrollAction: () => void; lockTargets: Array<HTMLElement | null> }) => {
+    (options: {
+      scrollAction: () => void;
+      lockTargets: Array<HTMLElement | null>;
+    }) => {
       const lockTargets = Array.from(
-        new Set(options.lockTargets.filter((target): target is HTMLElement => Boolean(target))),
+        new Set(
+          options.lockTargets.filter((target): target is HTMLElement =>
+            Boolean(target),
+          ),
+        ),
       );
 
       clearProgrammaticLock();
@@ -153,19 +227,34 @@ export function DualPaneReader() {
     [clearProgrammaticLock],
   );
 
-  const scrollPdfToPage = useCallback((pageNumber: number, behavior: ScrollBehavior) => {
-    const target = pdfContainerRef.current?.querySelector<HTMLElement>(
-      `[data-pdf-page="${pageNumber}"]`,
-    );
-    target?.scrollIntoView({ behavior, block: "start" });
-  }, []);
+  const scrollPdfToPage = useCallback(
+    (pageNumber: number, behavior: ScrollBehavior) => {
+      const container = pdfContainerRef.current;
+      const target = container?.querySelector<HTMLElement>(
+        `[data-pdf-page="${pageNumber}"]`,
+      );
+      scrollElementWithinContainer({
+        container,
+        target: target ?? null,
+        behavior,
+        block: "start",
+      });
+    },
+    [],
+  );
 
   const scrollMarkdownToPage = useCallback(
     (pageNumber: number, behavior: ScrollBehavior) => {
-      const target = markdownContainerRef.current?.querySelector<HTMLElement>(
+      const container = markdownContainerRef.current;
+      const target = container?.querySelector<HTMLElement>(
         `[data-page="${pageNumber}"]`,
       );
-      target?.scrollIntoView({ behavior, block: "start" });
+      scrollElementWithinContainer({
+        container,
+        target: target ?? null,
+        behavior,
+        block: "start",
+      });
     },
     [],
   );
@@ -227,10 +316,37 @@ export function DualPaneReader() {
 
   const goToPageFromNavigation = useCallback(
     (pageNumber: number) => {
-      jumpToPage(pageNumber, { behavior: "smooth", syncPdf: true, syncMarkdown: true });
+      jumpToPage(pageNumber, {
+        behavior: "smooth",
+        syncPdf: true,
+        syncMarkdown: true,
+      });
     },
     [jumpToPage],
   );
+
+  const handleViewportScroll = useCallback(() => {
+    if (isProgrammaticScroll.current) {
+      return;
+    }
+
+    const viewport = markdownContainerRef.current;
+    const target = aiCursorRef.current ?? bottomAnchorRef.current;
+    if (!viewport || !target) {
+      return;
+    }
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const distanceFromTail = targetRect.bottom - viewportRect.bottom;
+    const isNearTail = Math.abs(distanceFromTail) < TAIL_SYNC_THRESHOLD_PX;
+    const nextShowResumeButton = !isNearTail;
+
+    isUserScrolledUp.current = nextShowResumeButton;
+    setShowResumeButton((current) =>
+      current === nextShowResumeButton ? current : nextShowResumeButton,
+    );
+  }, []);
 
   useEffect(() => {
     const root = markdownContainerRef.current;
@@ -277,7 +393,11 @@ export function DualPaneReader() {
         }
 
         const rootBounds = root.getBoundingClientRect();
-        const best = pickClosestIntersection(entries, rootBounds.top, rootBounds.height);
+        const best = pickClosestIntersection(
+          entries,
+          rootBounds.top,
+          rootBounds.height,
+        );
         if (!best) {
           return;
         }
@@ -333,7 +453,11 @@ export function DualPaneReader() {
         }
 
         const rootBounds = root.getBoundingClientRect();
-        const best = pickClosestIntersection(entries, rootBounds.top, rootBounds.height);
+        const best = pickClosestIntersection(
+          entries,
+          rootBounds.top,
+          rootBounds.height,
+        );
         if (!best) {
           return;
         }
@@ -374,6 +498,128 @@ export function DualPaneReader() {
     withProgrammaticLock,
   ]);
 
+  const activePageGeneration = activePage ? pageGenerations[activePage] : null;
+  const activeRawMarkdown = activePageGeneration?.lectureMarkdown || "";
+  const isActiveStreaming = Boolean(
+    isGenerating &&
+    queueProgress?.phase === "streaming" &&
+    activePage !== null &&
+    activePageGeneration?.isGenerating,
+  );
+
+  const scrollToActiveTail = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const container = markdownContainerRef.current;
+      const target = aiCursorRef.current ?? bottomAnchorRef.current;
+      scrollElementWithinContainer({
+        container,
+        target,
+        behavior,
+        block: "end",
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (streamingPageRef.current === activePage) {
+      return;
+    }
+
+    streamingPageRef.current = activePage;
+    streamBufferRef.current = "";
+    previousRawStreamingRef.current = "";
+    setDisplayedStreamingText("");
+  }, [activePage]);
+
+  useEffect(() => {
+    if (!activePage) {
+      return;
+    }
+
+    const previousRaw = previousRawStreamingRef.current;
+    if (!previousRaw || activeRawMarkdown.startsWith(previousRaw)) {
+      const appendChunk = activeRawMarkdown.slice(previousRaw.length);
+      if (appendChunk) {
+        streamBufferRef.current += appendChunk;
+      }
+    } else {
+      streamBufferRef.current = activeRawMarkdown;
+      setDisplayedStreamingText("");
+    }
+
+    previousRawStreamingRef.current = activeRawMarkdown;
+  }, [activePage, activeRawMarkdown]);
+
+  useEffect(() => {
+    if (!isActiveStreaming) {
+      aiCursorRef.current = null;
+    }
+  }, [isActiveStreaming]);
+
+  useEffect(() => {
+    if (drainIntervalRef.current !== null) {
+      window.clearInterval(drainIntervalRef.current);
+      drainIntervalRef.current = null;
+    }
+
+    const shouldDrain = isActiveStreaming || streamBufferRef.current.length > 0;
+    if (!shouldDrain) {
+      return;
+    }
+
+    drainIntervalRef.current = window.setInterval(() => {
+      const backlog = streamBufferRef.current.length;
+      if (!backlog) {
+        return;
+      }
+
+      const step =
+        backlog > 300 ? 22 : backlog > 200 ? 15 : backlog > 100 ? 9 : 3;
+      const nextChunk = streamBufferRef.current.slice(0, step);
+      streamBufferRef.current = streamBufferRef.current.slice(step);
+      setDisplayedStreamingText((current) => `${current}${nextChunk}`);
+    }, STREAM_DRAIN_INTERVAL_MS);
+
+    return () => {
+      if (drainIntervalRef.current !== null) {
+        window.clearInterval(drainIntervalRef.current);
+        drainIntervalRef.current = null;
+      }
+    };
+  }, [isActiveStreaming, activePage]);
+
+  useEffect(() => {
+    if (isGenerating) {
+      return;
+    }
+    isUserScrolledUp.current = false;
+    setShowResumeButton(false);
+  }, [isGenerating]);
+
+  useEffect(() => {
+    if (!isGenerating || isUserScrolledUp.current) {
+      return;
+    }
+    scrollToActiveTail("auto");
+  }, [displayedStreamingText, isGenerating, scrollToActiveTail]);
+
+  useEffect(() => {
+    if (
+      !isGenerating ||
+      queueProgress?.phase !== "streaming" ||
+      activePage === null ||
+      isUserScrolledUp.current
+    ) {
+      return;
+    }
+    jumpToPage(activePage, {
+      behavior: "smooth",
+      syncPdf: false,
+      syncMarkdown: true,
+    });
+  }, [activePage, isGenerating, jumpToPage, queueProgress?.phase]);
+
   const isReady = Boolean(documentData?.pages.length);
   const currentPageGeneration = pageGenerations[currentPage];
   const fullNotesMarkdown = useMemo(() => {
@@ -398,7 +644,7 @@ export function DualPaneReader() {
     if (!isGenerating) {
       return null;
     }
-    if (generationMode === "full" && queueProgress) {
+    if (generationMode === "full" && queueProgress?.phase === "streaming") {
       const pageLabel = activePage ? ` · Page ${activePage}` : "";
       return `Generating full document ${queueProgress.current}/${queueProgress.total}${pageLabel}`;
     }
@@ -407,6 +653,13 @@ export function DualPaneReader() {
     }
     return "Generating...";
   }, [activePage, generationMode, isGenerating, queueProgress]);
+  const isMappingPhase = isGenerating && queueProgress?.phase === "mapping";
+  const mappingCompletedExtractions = isMappingPhase
+    ? queueProgress.current
+    : 0;
+  const mappingTotalSlides = isMappingPhase
+    ? queueProgress.total
+    : (documentData?.totalPages ?? 0);
 
   const notesHeaderText = useMemo(() => {
     if (!isReady) {
@@ -484,12 +737,26 @@ export function DualPaneReader() {
     [jumpToPage],
   );
 
+  const resumeAutoScroll = useCallback(() => {
+    isUserScrolledUp.current = false;
+    setShowResumeButton(false);
+    scrollToActiveTail("smooth");
+  }, [scrollToActiveTail]);
+
   return (
-    <section className="grid h-[72vh] min-h-[560px] gap-4 md:grid-cols-2">
-      <article className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/55 bg-white/32 shadow-xl backdrop-blur-md dark:border-slate-700/55 dark:bg-slate-900/50">
+    <section className="relative grid h-[72vh] min-h-[560px] gap-4 md:grid-cols-2">
+      {isMappingPhase ? (
+        <GlobalMappingLoader
+          completedExtractions={mappingCompletedExtractions}
+          totalSlides={mappingTotalSlides}
+        />
+      ) : null}
+      <article className="relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/55 bg-white/32 shadow-xl backdrop-blur-md dark:border-slate-700/55 dark:bg-slate-900/50">
         <header className="border-b border-white/55 bg-white/30 px-4 py-3 backdrop-blur-sm dark:border-slate-700/55 dark:bg-slate-900/45">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-zinc-800 dark:text-slate-100">PDF Viewer</h3>
+            <h3 className="text-sm font-semibold text-zinc-800 dark:text-slate-100">
+              PDF Viewer
+            </h3>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -522,7 +789,9 @@ export function DualPaneReader() {
                 disabled={!isReady && !isGenerating}
                 className={[
                   "rounded-md px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50",
-                  isGenerating ? "bg-red-600 hover:bg-red-500" : "bg-accent hover:opacity-90",
+                  isGenerating
+                    ? "bg-red-600 hover:bg-red-500"
+                    : "bg-accent hover:opacity-90",
                 ].join(" ")}
               >
                 {isGenerating ? "Cancel Generation" : "Generate Full Document"}
@@ -530,7 +799,9 @@ export function DualPaneReader() {
             </div>
           </div>
           <p className="mt-1 text-xs text-zinc-600 dark:text-slate-400">
-            {generationStatusText ?? "Ready to generate."}
+            {isMappingPhase
+              ? "\u00A0"
+              : (generationStatusText ?? "Ready to generate.")}
           </p>
         </header>
 
@@ -609,7 +880,9 @@ export function DualPaneReader() {
             </div>
           ) : (
             <div className="p-4">
-              <p className="text-sm text-zinc-600 dark:text-slate-400">No PDF loaded yet.</p>
+              <p className="text-sm text-zinc-600 dark:text-slate-400">
+                No PDF loaded yet.
+              </p>
             </div>
           )}
         </div>
@@ -617,29 +890,62 @@ export function DualPaneReader() {
 
       <article className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/55 bg-white/32 shadow-xl backdrop-blur-md dark:border-slate-700/55 dark:bg-slate-900/50">
         <header className="border-b border-white/55 bg-white/30 px-4 py-3 backdrop-blur-sm dark:border-slate-700/55 dark:bg-slate-900/45">
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-slate-100">Markdown Notes Stream</h3>
-          <p className="mt-1 text-xs text-zinc-600 dark:text-slate-400">{notesHeaderText}</p>
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-slate-100">
+            Markdown Notes Stream
+          </h3>
+          <p className="mt-1 text-xs text-zinc-600 dark:text-slate-400">
+            {notesHeaderText}
+          </p>
         </header>
 
         <div
           ref={markdownContainerRef}
           data-pane="markdown"
+          onScroll={handleViewportScroll}
           className="min-h-0 flex-1 overflow-auto"
         >
           <div className="space-y-4 p-4 pb-6">
             {documentData?.pages.length ? (
               documentData.pages.map((page) => {
                 const generation = pageGenerations[page.pageNumber];
+                const rawLectureMarkdown = generation?.lectureMarkdown || "";
                 const active = page.pageNumber === currentPage;
-                const isPageGenerating =
-                  isGenerating && activePage === page.pageNumber;
+                const pageIndex = pageIndexByNumber.get(page.pageNumber) ?? -1;
+                const activePageIndex =
+                  activePage !== null
+                    ? (pageIndexByNumber.get(activePage) ?? -1)
+                    : -1;
+                const isStreaming =
+                  isGenerating &&
+                  queueProgress?.phase === "streaming" &&
+                  activePage === page.pageNumber &&
+                  generation?.isGenerating === true;
+                const isQueued =
+                  isGenerating &&
+                  generationMode === "full" &&
+                  queueProgress?.phase === "streaming" &&
+                  pageIndex > activePageIndex;
+                const slideStatus = isQueued
+                  ? "Queued"
+                  : isStreaming
+                    ? "Streaming"
+                    : "Completed";
+                const renderedLectureMarkdown = isStreaming
+                  ? displayedStreamingText
+                  : rawLectureMarkdown;
                 return (
                   <div
                     key={page.pageNumber}
                     data-page={page.pageNumber}
-                    onClick={(event) => onMarkdownCardClick(page.pageNumber, event)}
+                    onClick={(event) =>
+                      onMarkdownCardClick(page.pageNumber, event)
+                    }
                     className={[
                       "cursor-pointer rounded-xl border bg-panel px-4 py-3 text-zinc-800 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md dark:text-slate-100 dark:hover:bg-slate-800",
+                      isQueued ? "opacity-50" : "opacity-100",
+                      isStreaming
+                        ? "border-t-2 border-t-blue-400/70 shadow-[0_0_15px_rgba(59,130,246,0.15)] dark:shadow-[0_0_15px_rgba(59,130,246,0.15)]"
+                        : "",
                       active
                         ? "border-accent shadow-[0_0_0_0.9px_rgba(15,91,143,0.35),0_12px_22px_-14px_rgba(15,91,143,0.6)]"
                         : "border-border/70 dark:border-slate-700/75",
@@ -649,11 +955,24 @@ export function DualPaneReader() {
                       <span className="inline-flex rounded-full border border-white/70 bg-white/75 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-700 dark:border-slate-600/70 dark:bg-slate-800/85 dark:text-slate-300">
                         Page {page.pageNumber}
                       </span>
-                      {isPageGenerating ? (
-                        <span className="text-xs font-medium text-accent">
-                          Generating...
+                      <div className="flex items-center gap-1.5">
+                        {isStreaming ? (
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300/45 border-t-blue-500"
+                          />
+                        ) : null}
+                        <span
+                          className={[
+                            "text-xs font-medium",
+                            isStreaming
+                              ? "text-accent"
+                              : "text-zinc-500 dark:text-slate-400",
+                          ].join(" ")}
+                        >
+                          {slideStatus}
                         </span>
-                      ) : null}
+                      </div>
                     </div>
 
                     {generation?.error ? (
@@ -662,14 +981,33 @@ export function DualPaneReader() {
                       </p>
                     ) : null}
 
-                    {generation?.lectureMarkdown ? (
+                    {isQueued ? (
+                      <div className="space-y-2 py-1">
+                        <div className="h-4 w-11/12 rounded-md bg-slate-200 animate-pulse dark:bg-slate-800" />
+                        <div className="h-4 w-10/12 rounded-md bg-slate-200 animate-pulse dark:bg-slate-800" />
+                        <div className="h-4 w-8/12 rounded-md bg-slate-200 animate-pulse dark:bg-slate-800" />
+                        <div className="h-4 w-7/12 rounded-md bg-slate-200 animate-pulse dark:bg-slate-800" />
+                      </div>
+                    ) : isStreaming || renderedLectureMarkdown ? (
                       <div className="markdown-content prose prose-slate max-w-none select-text dark:prose-invert">
                         <ReactMarkdown
                           remarkPlugins={[remarkMath]}
                           rehypePlugins={[rehypeKatex]}
                         >
-                          {generation.lectureMarkdown}
+                          {renderedLectureMarkdown}
                         </ReactMarkdown>
+                        {isStreaming ? (
+                          <span
+                            ref={(node) => {
+                              if (isStreaming) {
+                                aiCursorRef.current = node;
+                              }
+                            }}
+                            className="ml-1 inline-block align-baseline font-mono text-accent animate-pulse"
+                          >
+                            ▉
+                          </span>
+                        ) : null}
                       </div>
                     ) : (
                       <p className="text-sm text-zinc-500 dark:text-slate-400">
@@ -684,8 +1022,20 @@ export function DualPaneReader() {
                 Upload a PDF and generate at least one page to begin.
               </p>
             )}
+            <div ref={bottomAnchorRef} className="h-1" />
           </div>
         </div>
+
+        {showResumeButton && isGenerating ? (
+          <button
+            type="button"
+            onClick={resumeAutoScroll}
+            className="absolute bottom-20 left-1/2 z-20 flex -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full bg-blue-500/80 px-4 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur animate-bounce"
+          >
+            <span aria-hidden="true"></span>
+            New content generating...
+          </button>
+        ) : null}
 
         <div className="shrink-0 border-t border-white/20 bg-white/10 p-4 backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/40">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -693,7 +1043,7 @@ export function DualPaneReader() {
               {`Pages: ${pageCount}${
                 copyStatusText
                   ? ` · ${copyStatusText}`
-                  : generationStatusText
+                  : !isMappingPhase && generationStatusText
                     ? ` · ${generationStatusText}`
                     : ""
               }`}

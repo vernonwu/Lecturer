@@ -54,6 +54,7 @@ export function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
     avgTps,
     avgLatencyMs,
     totalTokensConsumed,
+    backgroundTokensConsumed,
     generatedSlides,
     latestTps,
     latestContextTokens,
@@ -110,6 +111,9 @@ export function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
             </p>
             <p className="mt-1 text-xs text-zinc-600 dark:text-slate-400">
               Generated Slides: {generatedSlides}
+            </p>
+            <p className="mt-1 text-xs text-zinc-600 dark:text-slate-400">
+              Background Mapping: {formatCompactNumber(backgroundTokensConsumed)} tokens
             </p>
           </article>
         </div>

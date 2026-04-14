@@ -14,6 +14,12 @@ export const COMPRESSION_LIMITS = {
   jpegQualityMax: 1,
 } as const;
 
+export const CONCURRENCY_LIMITS = {
+  min: 1,
+  max: 24,
+  default: 4,
+} as const;
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -44,12 +50,24 @@ export function normalizeCompressionSettings(
   };
 }
 
+export function normalizeMaxConcurrentRequests(value: unknown): number {
+  const parsedValue =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : CONCURRENCY_LIMITS.default;
+
+  return Math.floor(
+    clamp(parsedValue, CONCURRENCY_LIMITS.min, CONCURRENCY_LIMITS.max),
+  );
+}
+
 export interface LecturerSettings {
   providerType: ProviderType;
   apiKey: string;
   baseUrl: string;
   modelName: string;
   contextMode: GenerationContextMode;
+  maxConcurrentRequests: number;
   outputLanguage: string;
   customPrompt: string;
   compression: PdfCompressionSettings;
@@ -94,8 +112,10 @@ export const CONTEXT_MODE_LABELS: Record<GenerationContextMode, string> = {
 };
 
 export const CONTEXT_MODE_TOOLTIPS: Record<GenerationContextMode, string> = {
-  fast: "Optimized for speed and token savings. Uses a rolling summary.",
-  full: "Highest precision for complex derivations. Passes all previous notes as context.",
+  fast:
+    "Starts generation immediately while context mapping runs in the background and grows opportunistically.",
+  full:
+    "Blocks on full context mapping first, then generates with guaranteed global context for every slide.",
 };
 
 export const DEFAULT_SETTINGS: LecturerSettings = {
@@ -104,6 +124,7 @@ export const DEFAULT_SETTINGS: LecturerSettings = {
   baseUrl: DEFAULT_BASE_URL_BY_PROVIDER.openai,
   modelName: DEFAULT_MODEL_BY_PROVIDER.openai,
   contextMode: "fast",
+  maxConcurrentRequests: CONCURRENCY_LIMITS.default,
   outputLanguage: "English",
   customPrompt: "",
   compression: normalizeCompressionSettings(undefined),

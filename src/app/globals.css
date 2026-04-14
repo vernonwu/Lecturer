@@ -40,3 +40,29 @@ body {
 .katex {
   color: inherit !important;
 }
+
+@keyframes scanner-sweep {
+  0% {
+    transform: translateX(-140%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+.scanner-sweep {
+  animation: scanner-sweep 1.7s linear infinite;
+}
+
+@keyframes mapping-progress-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.mapping-progress-shimmer {
+  animation: mapping-progress-shimmer 1.7s linear infinite;
+}

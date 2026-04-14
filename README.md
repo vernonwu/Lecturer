@@ -46,6 +46,15 @@ Open [http://localhost:3000](http://localhost:3000) and you're in.
 
 ---
 
+## 🧭 Dual Context Modes
+
+- **Fast**: starts generation immediately while context mapping runs in the background. Context improves progressively as more slides are mapped.
+- **Full**: waits for context mapping across the whole document, then starts generation with complete global context from slide 1.
+
+Use **Fast** for lower startup latency, and **Full** for maximum cross-slide coherence.
+
+---
+
 ## ⚙️ Supported AI Providers
 
 | Provider              | Works out of the box |

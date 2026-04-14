@@ -1,16 +1,19 @@
 "use client";
 
 import { useCallback } from "react";
-import type { GenerationContextMode, ProviderType } from "@/types/settings";
+import type { ProviderType } from "@/types/settings";
+import {
+  normalizeSlideTakeaway,
+  type SlideTakeaway,
+} from "@/lib/lecture-prompts";
 
 interface GenerateRequestPayload {
   pageNumber: number;
+  totalSlides: number;
   imageDataUrl: string;
   pdfTitle: string;
-  contextMode: GenerationContextMode;
-  historyContext: string;
+  takeaways: SlideTakeaway[];
   previousPageMarkdown: string;
-  fullHistoryMarkdown: string;
   outputLanguage: string;
   customPrompt: string;
 }
@@ -28,6 +31,19 @@ interface LectureStreamParams {
   signal?: AbortSignal;
   onLectureChunk: (chunk: string) => void;
   onMemoryChunk: (chunk: string) => void;
+}
+
+interface ExtractTakeawayRequestPayload {
+  pageNumber: number;
+  imageDataUrl: string;
+  pdfTitle: string;
+  outputLanguage: string;
+}
+
+interface ExtractTakeawayParams {
+  request: ExtractTakeawayRequestPayload;
+  provider: ProviderRequestHeaders;
+  signal?: AbortSignal;
 }
 
 interface XmlParserHandlers {
@@ -299,7 +315,33 @@ export function useLectureStream() {
     [],
   );
 
+  const extractTakeaway = useCallback(async (params: ExtractTakeawayParams) => {
+    const response = await fetch("/api/takeaway", {
+      method: "POST",
+      signal: params.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-lecturer-provider": params.provider.provider,
+        "x-lecturer-api-key": params.provider.apiKey,
+        "x-lecturer-base-url": params.provider.baseUrl,
+        "x-lecturer-model": params.provider.model,
+      },
+      body: JSON.stringify(params.request),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Takeaway request failed (${response.status}): ${text.slice(0, 500)}`,
+      );
+    }
+
+    const payload = (await response.json()) as { takeaway?: unknown };
+    return normalizeSlideTakeaway(payload.takeaway, params.request.pageNumber);
+  }, []);
+
   return {
     streamLecture,
+    extractTakeaway,
   };
 }

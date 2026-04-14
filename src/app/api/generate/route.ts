@@ -1,18 +1,21 @@
 import { NextRequest } from "next/server";
+import {
+  buildMainGenerationSystemPrompt,
+  normalizeSlideTakeaway,
+  type SlideTakeaway,
+} from "@/lib/lecture-prompts";
 
 export const runtime = "edge";
 
 type ProviderType = "openai" | "anthropic" | "gemini" | "custom";
-type GenerationContextMode = "fast" | "full";
 
 interface GenerateRequestBody {
   pageNumber: number;
+  totalSlides: number;
   imageDataUrl: string;
   pdfTitle: string;
-  contextMode: GenerationContextMode;
-  historyContext: string;
+  takeaways: SlideTakeaway[];
   previousPageMarkdown: string;
-  fullHistoryMarkdown: string;
   outputLanguage: string;
   customPrompt: string;
 }
@@ -25,65 +28,10 @@ interface ProviderConfig {
 }
 
 const DEFAULT_OUTPUT_LANGUAGE = "English";
-const DEFAULT_CONTEXT_MODE: GenerationContextMode = "fast";
 const MAX_OUTPUT_LANGUAGE_CHARS = 120;
 const MAX_CUSTOM_PROMPT_CHARS = 4_000;
-const MAX_FULL_HISTORY_CHARS = 400_000;
-
-const PEDAGOGY_AND_DEPTH_PROMPT = `
-CRITICAL INSTRUCTIONS FOR PEDAGOGY & DEPTH (STRICT):
-1. ANTI-PARROTING: Cover ALL the content, but Do NOT just read the slide text out loud. Synthesize and abbreviate the text blocks into a conversational but dense academic explanation.
-2. MANDATORY MATH WALKTHROUGH: You MUST explain at least the core steps of EVERY formula or derivation present on the slide. Define the key variables and explain the intuition behind the math. Do not skip or gloss over the mathematics.
-3. VISUAL GROUNDING: You MUST explicitly analyze and incorporate any charts, graphs, diagrams, or architecture figures on the slide into your lecture. Reference them directly in your prose (e.g., "As illustrated in the graph on the right, the curve indicates...", "Notice the architecture diagram here, where component X connects to Y...").
-4. VISUAL HIERARCHY & CUES: You MUST actively interpret the spatial layout and typographical cues on the slide.
-   - Positioning: Content placed at the top, center, or in larger font is likely more important. If the slide has a title, it often encapsulates the main theme.
-   - Punctuation Intent: Pay close attention to punctuations such as '?' and '!'. e.g. A question mark ('?') often indicates a core problem statement, a gap in knowledge, or a rhetorical question—you MUST frame your explanation by posing this question to the audience before answering it. An exclamation mark ('!') indicates a critical pitfall, a surprising breakthrough, or a strict rule—you MUST emphasize this with a strong warning or assertion.
-   - Arrows/Lines: Treat arrows as explicit indicators of causality, state transitions, or logical flow (e.g., A -> B). Explain this relationship explicitly.
-   - Typography & Color: Pay close attention to bold, italic, differently sized, or colored text. These indicate emphasis or distinct categories. If a concept is visually emphasized on the slide, you MUST emphasize its importance in your lecture explanation.
-   - Grouping: If items are grouped visually (e.g., in boxes or columns), explain the relationship or contrast between these groups.
-`;
-
-const TRUTH_AND_GROUNDING_PROMPT = `
-CRITICAL INSTRUCTIONS FOR TRUTH & GROUNDING (STRICT):
-1. EVIDENCE BOUNDARY: You may use ONLY these inputs as facts: (a) the current slide image, (b) PDF title, (c) provided memory/history context (rolling summary or full previous notes), and (d) previous page markdown when provided. Do NOT invent any additional context.
-2. NO FABRICATION: Do NOT fabricate definitions, equations, variable meanings, dataset names, experiment settings, citations, theorem names, historical facts, or page-to-page transitions that are not explicitly present in the allowed inputs.
-3. AMBIGUITY HANDLING: If text, symbols, or figures are blurry/occluded/ambiguous, state that they are unclear and continue with only what is confidently visible. Do NOT guess missing tokens or numbers.
-4. CONTINUITY DISCIPLINE: Use prior context only for consistency of already introduced symbols/terms. If a needed definition is not present in current inputs, do not claim it as known.
-5. SOURCE PRIORITY: When there is any conflict, trust the current slide image over prior memory text. Never override visible slide content with speculative interpretation.
-6. MEMORY SAFETY: In <memory_update>, include only high-confidence technical facts that are explicitly supported by the current slide. Do NOT add speculative forecasts about future slides.
-`;
-
-function buildSystemPrompt(body: GenerateRequestBody) {
-  const outputLanguage = body.outputLanguage.trim() || DEFAULT_OUTPUT_LANGUAGE;
-  const customPrompt = body.customPrompt.trim() || "(none)";
-
-  return `You are an expert professor giving an advanced technical lecture.
-
-CRITICAL INSTRUCTIONS FOR NARRATIVE FLOW:
-1. You are in the MIDDLE of a continuous lecture. DO NOT output any greetings, pleasantries, or sign-offs (e.g., never say "Welcome back", "Let's continue", "In conclusion", or "Now let's look at").
-2. Get straight to the technical point of the current slide immediately.
-3. You have been provided with 'Previous Context' and 'Memory'. Use this ONLY to ensure your mathematical and logical definitions are consistent with what you said before. DO NOT explicitly repeat or summarize the previous context in your output.
-4. Explain the current slide as if it is a seamless continuation of the previous paragraph.
-
-${PEDAGOGY_AND_DEPTH_PROMPT}
-
-${TRUTH_AND_GROUNDING_PROMPT}
-
-=== USER PREFERENCES (HIGHEST PRIORITY FOR STYLE & CONTENT) ===
-OUTPUT LANGUAGE: You MUST output all explanations, lectures, and summaries entirely in ${outputLanguage}. (Math formulas remain in standard LaTeX).
-CUSTOM INSTRUCTIONS: ${customPrompt}
-(Note: You must follow the custom instructions above for the tone, depth, and style of your explanation. However, you MUST still obey the strict XML output structure below).
-===============================================================
-
-You MUST structure your response EXACTLY like this, regardless of custom instructions:
-<lecture>
-[Markdown lecture text in ${outputLanguage}, strictly using $$ for block math and $ for inline math. Do NOT use \\[ or \\( ]
-</lecture>
-<memory_update>
-[Extract 1 to 3 crucial technical takeaways in ${outputLanguage}. STRICT budget of max 50 words.]
-</memory_update>
-`;
-}
+const MAX_PREVIOUS_PAGE_CHARS = 120_000;
+const MAX_TAKEAWAYS = 500;
 
 function toProviderType(value: string | null): ProviderType | null {
   if (
@@ -116,40 +64,6 @@ function parseDataUrlImage(dataUrl: string) {
   };
 }
 
-function buildUserPrompt(body: GenerateRequestBody) {
-  if (body.contextMode === "full") {
-    const fullHistoryMarkdown = body.fullHistoryMarkdown.trim() || "(none)";
-
-    return [
-      `PDF Title/Summary: ${body.pdfTitle || "Untitled PDF"}`,
-      "",
-      "Context mode: FULL (precision-first).",
-      "Accumulated markdown history from all previous pages (1 to N-1):",
-      fullHistoryMarkdown,
-      "",
-      `Current page number (N): ${body.pageNumber}`,
-      "Use the attached page image as the primary source of truth.",
-    ].join("\n");
-  }
-
-  const historyContext = body.historyContext.trim() || "(none)";
-  const previousPageMarkdown = body.previousPageMarkdown.trim() || "(none)";
-
-  return [
-    `PDF Title/Summary: ${body.pdfTitle || "Untitled PDF"}`,
-    "",
-    "Context mode: FAST (token-efficient rolling memory).",
-    "Accumulated context from earlier pages (1 to N-2):",
-    historyContext,
-    "",
-    "Exact markdown from previous page (N-1):",
-    previousPageMarkdown,
-    "",
-    `Current page number (N): ${body.pageNumber}`,
-    "Use the attached page image as the primary source of truth.",
-  ].join("\n");
-}
-
 function sanitizeOutputLanguage(value: unknown) {
   if (typeof value !== "string") {
     return DEFAULT_OUTPUT_LANGUAGE;
@@ -168,18 +82,31 @@ function sanitizeCustomPrompt(value: unknown) {
   return value.trim().slice(0, MAX_CUSTOM_PROMPT_CHARS);
 }
 
-function sanitizeContextMode(value: unknown): GenerationContextMode {
-  if (value === "full") {
-    return "full";
-  }
-  return DEFAULT_CONTEXT_MODE;
-}
-
-function sanitizeFullHistoryMarkdown(value: unknown) {
+function sanitizePreviousPageMarkdown(value: unknown) {
   if (typeof value !== "string") {
     return "";
   }
-  return value.slice(0, MAX_FULL_HISTORY_CHARS);
+  return value.slice(0, MAX_PREVIOUS_PAGE_CHARS);
+}
+
+function sanitizeTakeaways(value: unknown): SlideTakeaway[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .slice(0, MAX_TAKEAWAYS)
+    .map((item, index) => normalizeSlideTakeaway(item, index + 1))
+    .sort((a, b) => a.slide_number - b.slide_number);
+}
+
+function buildUserPrompt(body: GenerateRequestBody) {
+  return [
+    `PDF Title/Summary: ${body.pdfTitle || "Untitled PDF"}`,
+    `Current slide: ${body.pageNumber}/${Math.max(1, body.totalSlides)}`,
+    "Use the attached slide image as the primary source of truth.",
+    "Continue naturally from the previous slide markdown provided in system context.",
+  ].join("\n");
 }
 
 function extractOpenAiDelta(payload: unknown) {
@@ -304,7 +231,13 @@ async function requestOpenAiCompatibleStream(
 ) {
   const endpoint = buildEndpoint(config.baseUrl, "/chat/completions");
   const userPrompt = buildUserPrompt(body);
-  const systemPrompt = buildSystemPrompt(body);
+  const systemPrompt = buildMainGenerationSystemPrompt({
+    pageNumber: body.pageNumber,
+    availableTakeaways: body.takeaways,
+    previousPageMarkdown: body.previousPageMarkdown,
+    outputLanguage: body.outputLanguage,
+    customPrompt: body.customPrompt,
+  });
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -376,7 +309,13 @@ async function requestAnthropicStream(
 ) {
   const endpoint = buildEndpoint(config.baseUrl, "/messages");
   const userPrompt = buildUserPrompt(body);
-  const systemPrompt = buildSystemPrompt(body);
+  const systemPrompt = buildMainGenerationSystemPrompt({
+    pageNumber: body.pageNumber,
+    availableTakeaways: body.takeaways,
+    previousPageMarkdown: body.previousPageMarkdown,
+    outputLanguage: body.outputLanguage,
+    customPrompt: body.customPrompt,
+  });
   const parsedImage = parseDataUrlImage(body.imageDataUrl);
 
   const upstreamResponse = await fetch(endpoint, {
@@ -486,16 +425,14 @@ function assertGenerateBody(body: unknown): GenerateRequestBody {
 
   return {
     pageNumber: payload.pageNumber,
+    totalSlides:
+      typeof payload.totalSlides === "number" && Number.isFinite(payload.totalSlides)
+        ? Math.max(1, Math.floor(payload.totalSlides))
+        : payload.pageNumber,
     imageDataUrl: payload.imageDataUrl,
     pdfTitle: typeof payload.pdfTitle === "string" ? payload.pdfTitle : "",
-    contextMode: sanitizeContextMode(payload.contextMode),
-    historyContext:
-      typeof payload.historyContext === "string" ? payload.historyContext : "",
-    previousPageMarkdown:
-      typeof payload.previousPageMarkdown === "string"
-        ? payload.previousPageMarkdown
-        : "",
-    fullHistoryMarkdown: sanitizeFullHistoryMarkdown(payload.fullHistoryMarkdown),
+    takeaways: sanitizeTakeaways(payload.takeaways),
+    previousPageMarkdown: sanitizePreviousPageMarkdown(payload.previousPageMarkdown),
     outputLanguage: sanitizeOutputLanguage(payload.outputLanguage),
     customPrompt: sanitizeCustomPrompt(payload.customPrompt),
   };

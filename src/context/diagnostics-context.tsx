@@ -35,6 +35,7 @@ interface DiagnosticsTotals {
   totalOutputChars: number;
   totalDurationMs: number;
   generatedSlides: number;
+  backgroundTokens: number;
 }
 
 interface DiagnosticsState {
@@ -60,11 +61,21 @@ interface FinishSlidePayload {
   success: boolean;
 }
 
+interface RecordBackgroundUsagePayload {
+  kind: "takeaway";
+  pageNumber: number;
+  promptTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  success: boolean;
+}
+
 interface DiagnosticsStateValue {
   samples: DiagnosticsSample[];
   avgTps: number;
   avgLatencyMs: number;
   totalTokensConsumed: number;
+  backgroundTokensConsumed: number;
   generatedSlides: number;
   totalTimeMs: number;
   latestTps: number;
@@ -77,6 +88,7 @@ interface DiagnosticsActionsValue {
   beginSlide: (payload: BeginSlidePayload) => void;
   recordChunk: (payload: RecordChunkPayload) => void;
   finishSlide: (payload: FinishSlidePayload) => void;
+  recordBackgroundUsage: (payload: RecordBackgroundUsagePayload) => void;
   resetDiagnostics: () => void;
 }
 
@@ -101,6 +113,7 @@ function initialState(): DiagnosticsState {
       totalOutputChars: 0,
       totalDurationMs: 0,
       generatedSlides: 0,
+      backgroundTokens: 0,
     },
     samples: [],
     activeRuns: {},
@@ -245,6 +258,27 @@ export function DiagnosticsProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
+  const recordBackgroundUsage = useCallback(
+    (payload: RecordBackgroundUsagePayload) => {
+      const promptTokens = Math.max(0, Math.round(payload.promptTokens));
+      const outputTokens = Math.max(0, Math.round(payload.outputTokens));
+      const consumedTokens = promptTokens + outputTokens;
+
+      if (!Number.isFinite(consumedTokens) || consumedTokens <= 0) {
+        return;
+      }
+
+      setState((current) => ({
+        ...current,
+        totals: {
+          ...current.totals,
+          backgroundTokens: current.totals.backgroundTokens + consumedTokens,
+        },
+      }));
+    },
+    [],
+  );
+
   const resetDiagnostics = useCallback(() => {
     sampleCounterRef.current = 0;
     setState(initialState());
@@ -252,7 +286,8 @@ export function DiagnosticsProvider({ children }: { children: React.ReactNode })
 
   const stateValue = useMemo<DiagnosticsStateValue>(() => {
     const latest = state.samples[state.samples.length - 1];
-    const totalTokensConsumed = Math.round(charsToTokens(state.totals.totalOutputChars));
+    const streamedTokens = Math.round(charsToTokens(state.totals.totalOutputChars));
+    const totalTokensConsumed = streamedTokens + state.totals.backgroundTokens;
     const avgTps =
       state.totals.totalDurationMs > 0
         ? charsToTokens(state.totals.totalOutputChars) /
@@ -268,6 +303,7 @@ export function DiagnosticsProvider({ children }: { children: React.ReactNode })
       avgTps,
       avgLatencyMs,
       totalTokensConsumed,
+      backgroundTokensConsumed: state.totals.backgroundTokens,
       generatedSlides: state.totals.generatedSlides,
       totalTimeMs: state.totals.totalDurationMs,
       latestTps: latest?.tps ?? 0,
@@ -283,9 +319,10 @@ export function DiagnosticsProvider({ children }: { children: React.ReactNode })
       beginSlide,
       recordChunk,
       finishSlide,
+      recordBackgroundUsage,
       resetDiagnostics,
     }),
-    [beginSlide, finishSlide, recordChunk, resetDiagnostics],
+    [beginSlide, finishSlide, recordBackgroundUsage, recordChunk, resetDiagnostics],
   );
 
   return (

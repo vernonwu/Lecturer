@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useSettings } from "@/context/settings-context";
 import {
+  CONCURRENCY_LIMITS,
   COMPRESSION_LIMITS,
   CONTEXT_MODE_LABELS,
   CONTEXT_MODE_TOOLTIPS,
@@ -10,6 +11,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SETTINGS,
   OUTPUT_LANGUAGE_SUGGESTIONS,
+  normalizeMaxConcurrentRequests,
   normalizeCompressionSettings,
   type GenerationContextMode,
   type LecturerSettings,
@@ -72,6 +74,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       outputLanguage:
         draft.outputLanguage.trim() || DEFAULT_SETTINGS.outputLanguage,
       customPrompt: draft.customPrompt.trim(),
+      maxConcurrentRequests: normalizeMaxConcurrentRequests(
+        draft.maxConcurrentRequests,
+      ),
       compression: normalizeCompressionSettings(draft.compression),
     });
     onClose();
@@ -216,6 +221,32 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 })}
               </div>
             </fieldset>
+
+            <label className="grid gap-1.5">
+              <span className="text-sm font-medium">Max Concurrent Requests</span>
+              <input
+                type="number"
+                min={CONCURRENCY_LIMITS.min}
+                max={CONCURRENCY_LIMITS.max}
+                step={1}
+                value={draft.maxConcurrentRequests}
+                onChange={(event) => {
+                  const parsedValue = Number.parseInt(event.target.value, 10);
+                  if (Number.isNaN(parsedValue)) {
+                    return;
+                  }
+                  setDraft((current) => ({
+                    ...current,
+                    maxConcurrentRequests: parsedValue,
+                  }));
+                }}
+                className="h-11 rounded-lg border border-border/80 bg-white/90 px-3 text-sm outline-none focus:border-accent dark:border-slate-700/70 dark:bg-slate-800/85 dark:text-slate-100"
+              />
+              <span className="text-xs text-zinc-600 dark:text-slate-400">
+                Controls concurrent takeaway mapping requests ({CONCURRENCY_LIMITS.min}-
+                {CONCURRENCY_LIMITS.max}).
+              </span>
+            </label>
 
             <label className="grid gap-1.5">
               <span className="text-sm font-medium">Output Language</span>
