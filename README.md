@@ -1,3 +1,4 @@
+
 # 🎓 Lecturer
 
 **Turn any PDF slide deck into beautiful, synced lecture notes — powered by AI.**
@@ -10,7 +11,7 @@ Upload your slides. Watch notes appear, page by page, in real time. That's it.
 
 ## 🎬 Demo
 
-<video src="https://github.com/vernonwu/Lecturer/blob/main/media/demo.mov?raw=true" controls muted playsinline width="100%"></video>
+https://github.com/user-attachments/assets/8e4027bc-1b6c-4681-bd28-29834b53873d
 
 Generated with `gemini-3.1-flash-lite-preview` using default config.
 Source slides can be found [here](media/CS420.pdf).
