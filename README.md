@@ -10,7 +10,7 @@ Upload your slides. Watch notes appear, page by page, in real time. That's it.
 
 ## 🎬 Demo
 
-<video src="media/demo.mp4" controls muted playsinline width="100%"></video>
+<video src="https://github.com/vernonwu/Lecturer/blob/main/media/demo.mp4?raw=true" controls muted playsinline width="100%"></video>
 
 Generated with `gemini-3.1-flash-lite-preview` using default config.  
 Source slides can be found [here](media/CS420.pdf).
